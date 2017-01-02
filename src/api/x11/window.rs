@@ -287,6 +287,20 @@ impl Window {
                pl_attribs: &PlatformSpecificWindowBuilderAttributes)
                -> Result<Window, CreationError>
     {
+
+        let screen_id = match pl_attribs.screen_id {
+            Some(id) => id,
+            None => match window_attrs.monitor {
+                Some(PlatformMonitorId::X(MonitorId(_, monitor))) => monitor as i32,
+                _ => unsafe { (display.xlib.XDefaultScreen)(display.display) },
+            }
+        };
+
+        // this should be configurable
+        let statusbar = true;
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+
         let dimensions = {
 
             // x11 only applies constraints when the window is actively resized
@@ -301,16 +315,19 @@ impl Window {
                 dimensions.0 = cmp::max(dimensions.0, min.0);
                 dimensions.1 = cmp::max(dimensions.1, min.1);
             }
-            dimensions
 
-        };
+            if statusbar {
+                unsafe {
+                    let d = display.display;
+                    let screen = (display.xlib.XScreenOfDisplay)(d, screen_id);
+                    screen_width = (display.xlib.XWidthOfScreen)(screen);
+                    screen_height = (display.xlib.XHeightOfScreen)(screen);
+                }
 
-        let screen_id = match pl_attribs.screen_id {
-            Some(id) => id,
-            None => match window_attrs.monitor {
-                Some(PlatformMonitorId::X(MonitorId(_, monitor))) => monitor as i32,
-                _ => unsafe { (display.xlib.XDefaultScreen)(display.display) },
+                dimensions.0 = screen_width as u32;
             }
+
+            dimensions
         };
 
         // finding the mode to switch to if necessary
@@ -378,7 +395,7 @@ impl Window {
 
         // finally creating the window
         let window = unsafe {
-            let win = (display.xlib.XCreateWindow)(display.display, root, 0, 0, dimensions.0 as libc::c_uint,
+            let win = (display.xlib.XCreateWindow)(display.display, root, screen_width, screen_height, dimensions.0 as libc::c_uint,
                 dimensions.1 as libc::c_uint, 0,
                 match pl_attribs.visual_infos {
                     Some(vi) => vi.depth,
@@ -394,6 +411,38 @@ impl Window {
             display.check_errors().expect("Failed to call XCreateWindow");
             win
         };
+
+        if statusbar {
+            use std::ffi::CString;
+
+            // these calls must happen before setting visibility
+            let wm_window_type = CString::new("_NET_WM_WINDOW_TYPE").unwrap();
+            let wm_window_type_dock = CString::new("_NET_WM_WINDOW_TYPE_DOCK").unwrap();
+            let wm_window_type_atom;
+            let wm_window_type_dock_atom;
+            unsafe {
+                wm_window_type_atom = (display.xlib.XInternAtom)(
+                    display.display,
+                    wm_window_type.as_ptr(),
+                    ffi::False);
+
+                wm_window_type_dock_atom = (display.xlib.XInternAtom)(
+                    display.display,
+                    wm_window_type_dock.as_ptr(),
+                    ffi::False) as u32;
+
+
+                let window_type_dock_char_ptr =
+                    mem::transmute::<*const u32, *const u8>(&wm_window_type_dock_atom);
+
+                (display.xlib.XChangeProperty)(display.display, window,
+                                               wm_window_type_atom,
+                                               ffi::XA_ATOM,
+                                               32,
+                                               ffi::PropModeReplace,
+                                               window_type_dock_char_ptr, 1);
+            }
+        }
 
         // set visibility
         if window_attrs.visible {
@@ -470,7 +519,7 @@ impl Window {
             });
         }
 
-        let is_fullscreen = window_attrs.monitor.is_some();
+        let is_fullscreen = window_attrs.monitor.is_some() && !statusbar;
 
         if is_fullscreen {
             let state_atom = unsafe {
