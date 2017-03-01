@@ -10,12 +10,10 @@ use std::sync::{
     Mutex
 };
 use std::sync::mpsc::Receiver;
-use {CreationError, WindowEvent as Event, MouseCursor};
+use {CreationError, Event, MouseCursor};
 use CursorState;
 
 use WindowAttributes;
-
-gen_api_transition!();
 
 #[derive(Clone, Default)]
 pub struct PlatformSpecificWindowBuilderAttributes {

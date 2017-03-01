@@ -1,19 +1,22 @@
 extern crate winit;
 
-fn main() {
-    let events_loop = winit::EventsLoop::new();
+fn resize_callback(width: u32, height: u32) {
+    println!("Window resized to {}x{}", width, height);
+}
 
+fn main() {
     let window = winit::WindowBuilder::new()
         .with_title("A fantastic window!")
-        .build(&events_loop)
+        .with_window_resize_callback(resize_callback)
+        .build()
         .unwrap();
 
-    events_loop.run_forever(|event| {
+    for event in window.wait_events() {
         println!("{:?}", event);
 
         match event {
-            winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => events_loop.interrupt(),
+            winit::Event::Closed => break,
             _ => ()
         }
-    });
+    }
 }

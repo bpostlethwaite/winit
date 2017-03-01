@@ -1,4 +1,4 @@
-use {WindowEvent as Event, MouseCursor};
+use {Event, MouseCursor};
 use CreationError;
 use CreationError::OsError;
 use libc;
@@ -158,26 +158,18 @@ impl<'a> Iterator for PollEventsIterator<'a> {
             }
 
             let mut xev = unsafe { mem::uninitialized() };
+            let res = unsafe { (xlib.XCheckMaskEvent)(self.window.x.display.display, -1, &mut xev) };
 
-            // Get the next X11 event. XNextEvent will block if there's no
-            // events available; checking the count first ensures an event will
-            // be returned without blocking.
-            //
-            // Functions like XCheckTypedEvent can prevent events from being
-            // popped if they are of the wrong type in which case winit would
-            // enter a busy loop. To avoid that, XNextEvent is used to pop
-            // events off the queue since it will accept any event type.
-            unsafe {
-                let count = (xlib.XPending)(self.window.x.display.display);
-                if count == 0 {
-                    return None;
+            if res == 0 {
+                let res = unsafe { (xlib.XCheckTypedEvent)(self.window.x.display.display, ffi::ClientMessage, &mut xev) };
+
+                if res == 0 {
+                    let res = unsafe { (xlib.XCheckTypedEvent)(self.window.x.display.display, ffi::GenericEvent, &mut xev) };
+                    if res == 0 {
+                        return None;
+                    }
                 }
-
-                let res = (xlib.XNextEvent)(self.window.x.display.display, &mut xev);
-
-                // Can res ever be none zero if count is > 0?
-                assert!(res == 0);
-            };
+            }
 
             match xev.get_type() {
                 ffi::MappingNotify => {
@@ -186,7 +178,7 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                 },
 
                 ffi::ClientMessage => {
-                    use events::WindowEvent::{Closed, Awakened};
+                    use events::Event::{Closed, Awakened};
                     use std::sync::atomic::Ordering::Relaxed;
 
                     let client_msg: &ffi::XClientMessageEvent = unsafe { mem::transmute(&xev) };
@@ -200,7 +192,7 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                 },
 
                 ffi::ConfigureNotify => {
-                    use events::WindowEvent::Resized;
+                    use events::Event::Resized;
                     let cfg_event: &ffi::XConfigureEvent = unsafe { mem::transmute(&xev) };
                     let (current_width, current_height) = self.window.current_size.get();
                     if current_width != cfg_event.width || current_height != cfg_event.height {
@@ -210,7 +202,7 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                 },
 
                 ffi::Expose => {
-                    use events::WindowEvent::Refresh;
+                    use events::Event::Refresh;
                     return Some(Refresh);
                 },
 
