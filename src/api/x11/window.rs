@@ -298,8 +298,8 @@ impl Window {
 
         // this should be configurable
         let statusbar = true;
-        let mut screen_height = 0;
-        let mut screen_width = 0;
+        let mut x = 0;
+        let mut y = 0;
 
         let dimensions = {
 
@@ -320,11 +320,13 @@ impl Window {
                 unsafe {
                     let d = display.display;
                     let screen = (display.xlib.XScreenOfDisplay)(d, screen_id);
-                    screen_width = (display.xlib.XWidthOfScreen)(screen);
-                    screen_height = (display.xlib.XHeightOfScreen)(screen);
-                }
+                    let screen_height = (display.xlib.XHeightOfScreen)(screen);
+                    y = screen_height - dimensions.1 as i32;
 
-                dimensions.0 = screen_width as u32;
+                    if window_attrs.decorations {
+                        x = 2560;
+                    }
+                }
             }
 
             dimensions
@@ -394,8 +396,9 @@ impl Window {
         }
 
         // finally creating the window
+        println!("x: {}, y: {}, width: {}, height: {}", x, y, dimensions.0, dimensions.1);
         let window = unsafe {
-            let win = (display.xlib.XCreateWindow)(display.display, root, screen_width, screen_height, dimensions.0 as libc::c_uint,
+            let win = (display.xlib.XCreateWindow)(display.display, root, x, y, dimensions.0 as libc::c_uint,
                 dimensions.1 as libc::c_uint, 0,
                 match pl_attribs.visual_infos {
                     Some(vi) => vi.depth,
